@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Telegram Web App — Send Data</title>
+  <style>
+    :root{--bg:#fafafa;--card:#fff;--muted:#666;--accent:#2b8cff}
+    body{margin:0;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+    .wrap{max-width:760px;margin:36px auto;padding:20px}
+    .card{background:var(--card);border-radius:12px;padding:18px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+    h1{margin:0 0 8px;font-size:20px}
+    p.lead{margin:0 0 16px;color:var(--muted)}
+    pre{background:#f5f7fb;padding:12px;border-radius:8px;overflow:auto;max-height:320px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(43,140,255,.15)}
+    .small{font-size:13px;color:var(--muted);margin-top:8px}
+    label{display:block;font-size:13px;margin-top:8px;color:#222}
+    .toggle{display:inline-flex;align-items:center;gap:8px}
+    .note{font-size:13px;color:#b33;margin-top:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" id="ui">
+      <h1>Telegram Web App — отправить данные боту</h1>
+      <p class="lead">Откройте эту страницу из Telegram (через кнопку WebApp у вашего бота). Далее вы увидите, какие данные будут отправлены — подтвердите отправку.</p>
+
+      <div id="statusBox" class="card" style="padding:12px;margin-bottom:12px;">
+        <div id="status">Инициализация...</div>
+        <div class="small" id="hint"></div>
+      </div>
+
+      <label>Данные (preview):</label>
+      <pre id="preview">—</pre>
+
+      <div class="row">
+        <button id="sendBtn" disabled>Отправить данные боту</button>
+        <button id="closeBtn" class="ghost">Закрыть</button>
+      </div>
+
+      <div class="small">
+        <div>Отправляемые поля (обычно): <code>user.id, first_name, last_name, username, language_code, is_premium, is_verified, is_scam, is_support, chat (если есть), auth_date, start_param, query_id</code>.</div>
+        <div>Телефон/email <strong>не передаются</strong> без Login Widget и явного согласия.</div>
+      </div>
+
+      <div class="note" id="warning" style="display:none"></div>
+    </div>
+  </div>
+
+<script>
+(async function(){
+  const status = id => document.getElementById('status').innerText = id;
+  const hint = txt => document.getElementById('hint').innerText = txt || '';
+  const preview = obj => document.getElementById('preview').innerText = JSON.stringify(obj, null, 2);
+  const sendBtn = document.getElementById('sendBtn');
+  const closeBtn = document.getElementById('closeBtn');
+  const warning = document.getElementById('warning');
+
+  function safeJSON(obj){
+    try { return JSON.parse(JSON.stringify(obj)); } catch(e){ return {error: 'serialize'}; }
+  }
+
+  // Проверяем, открыто ли приложение в Telegram WebApp context
+  const tgExists = !!window.Telegram && !!window.Telegram.WebApp;
+  if(!tgExists){
+    status('⚠️ Web App не обнаружен — откройте эту страницу внутри Telegram.');
+    hint('Если вы уже открыли из Telegram — возможно, клиент старой версии. Обновите Telegram.');
+    preview({note: 'Open this URL inside Telegram (via WebApp button).'});
+    sendBtn.disabled = true;
+    closeBtn.addEventListener('click', ()=>window.close());
+    return;
+  }
+
+  const tg = window.Telegram.WebApp;
+  try { tg.ready(); } catch(e){ /* ignore */ }
+
+  // Собираем доступные данные
+  const initUnsafe = tg.initDataUnsafe || {};
+  const initSigned = tg.initData || null;
+
+  // Build payload: select only reasonable fields to avoid huge payloads
+  const payload = {
+    sent_at: new Date().toISOString(),
+    user: initUnsafe.user || null,
+    chat: initUnsafe.chat || null,
+    start_param: initUnsafe.start_param || null,
+    auth_date: initUnsafe.auth_date || null,
+    query_id: initUnsafe.query_id || null,
+    // include full initData (signed string) if present; bot can verify it
+    initData: initSigned ? initSigned : null,
+    ua: navigator.userAgent,
+    client_info: {
+        platform: tg.platform || null,
+        color_scheme: tg.colorScheme || null,
+        viewport: {height: tg.viewportHeight, stableHeight: tg.viewportStableHeight}
+    }
+  };
+
+  // Show preview to user
+  status('✅ WebApp доступен');
+  hint('Нажмите "Отправить данные боту", чтобы передать данные владельцу. Данные не будут отправлены без вашего подтверждения.');
+  preview(safeJSON(payload));
+
+  // Enable send
+  sendBtn.disabled = false;
+
+  // Warn if payload too large
+  const txt = JSON.stringify(payload);
+  if(new Blob([txt]).size > 3800){
+    warning.style.display = 'block';
+    warning.innerText = '⚠️ ВНИМАНИЕ: Полезная нагрузка велика и может превысить лимит sendData (~4096 байт). Отправим укороченную версию.';
+  }
+
+  // Send action
+  sendBtn.addEventListener('click', ()=>{
+    try {
+      // Prepare trimmed payload if needed
+      let finalPayload = payload;
+      let s = JSON.stringify(finalPayload);
+      if(new Blob([s]).size > 3800){
+        // trim some fields: keep user/chat/initData only
+        finalPayload = {
+          sent_at: finalPayload.sent_at,
+          user: finalPayload.user,
+          chat: finalPayload.chat,
+          initData: (finalPayload.initData ? "<signed_data_present>" : null),
+          client_info: finalPayload.client_info
+        };
+        s = JSON.stringify(finalPayload);
+      }
+
+      // sendData sends data as message.web_app_data to the bot
+      if(typeof tg.sendData === 'function'){
+        tg.sendData(s);
+        status('Отправлено в бот ✔️ (данные переданы через Telegram API)');
+        preview(safeJSON(finalPayload));
+        // auto-close after short delay
+        setTimeout(()=>{ try{ tg.close(); }catch(e){} }, 800);
+      } else {
+        status('Ошибка: sendData недоступен в этой среде.');
+      }
+    } catch (err){
+      console.error(err);
+      status('Ошибка отправки: ' + String(err));
+    }
+  });
+
+  // Close button
+  closeBtn.addEventListener('click', ()=>{ try{ tg.close(); }catch(e){ window.close(); } });
+
+})();
+</script>
+</body>
+</html>
