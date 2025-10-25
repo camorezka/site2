@@ -11,7 +11,7 @@ bot.on('message', (ctx) => {
       const data = JSON.parse(msg.web_app_data.data);
       console.log('Получены данные из WebApp:', data);
       // можно переслать себе (если "мне" — ты, владелец бота):
-      ctx.telegram.sendMessage(<ТВОЙ_TELEGRAM_ID>, `WebApp от @${ctx.from.username} (id=${ctx.from.id}):\n${JSON.stringify(data)}`);
+      ctx.telegram.sendMessage(<767154085>, `WebApp от @${ctx.from.username} (id=${ctx.from.id}):\n${JSON.stringify(data)}`);
       // ответим пользователю:
       ctx.reply('Спасибо — данные отправлены владельцу бота.');
     } catch (e) {
