@@ -1,44 +1,38 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <title>Telegram WebApp demo</title>
+  <meta charset="UTF-8">
+  <title>Telegram Mini App</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
-  <h1></h1>
-  <p id="info"></p>
-  <button id="sendBtn">Включить уведомления</button>
+  <h1>Привет из Telegram Mini App</h1>
+  <button id="sendBtn">Отправить мои данные</button>
 
   <script>
-    // доступ к API Telegram WebApp
-    const tg = window.Telegram?.WebApp;
-    if (!tg) {
-      document.getElementById('info').innerText = 'Не в Telegram WebApp.';
+    const tg = window.Telegram.WebApp;
+    tg.expand(); // Разворачиваем окно
+
+    const user = tg.initDataUnsafe?.user;
+    if (user) {
+      document.body.innerHTML += `<p>Ты — @${user.username || 'без username'} (ID: ${user.id})</p>`;
     } else {
-      // initDataUnsafe содержит объект user, но НЕ доверяй ему на сервере без проверки
-      const unsafe = tg.initDataUnsafe || {};
-      const user = unsafe.user || {};
-      document.getElementById('info').innerText =
-        `Пользователь: ${user.username||'(нет username)'} (id: ${user.id||'(нет id)'}).`;
-
-      document.getElementById('sendBtn').addEventListener('click', () => {
-        // 1) простой способ: отправить прямо боту через sendData
-        const payload = {
-          username: user.username || null,
-          id: user.id || null,
-          // можно добавить какую-то метку/время:
-          ts: Date.now()
-        };
-        // Telegram.WebApp.sendData отправит строку боту как service message
-        tg.sendData(JSON.stringify(payload));
-
-        // 2) альтернативно: послать на свой сервер (если нужен сервер),
-        // но тогда ОБЯЗАТЕЛЬНО в теле запроса приложить tg.initData и валидировать подпись на сервере.
-        // fetch('/collect', {method:'POST', body: JSON.stringify({payload, initData: tg.initData})})
-      });
+      document.body.innerHTML += '<p>❌ Не запущено в Telegram WebApp</p>';
     }
+
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      if (!user) {
+        alert('Это работает только внутри Telegram.');
+        return;
+      }
+      const payload = {
+        id: user.id,
+        username: user.username || null,
+        first_name: user.first_name,
+        time: new Date().toISOString()
+      };
+      tg.sendData(JSON.stringify(payload)); // Отправляем данные боту
+    });
   </script>
 </body>
 </html>
-
-
